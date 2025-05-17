@@ -26,9 +26,11 @@ intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-# Marcos e cor
-MARCOS = [15, 20, 35, 45, 55, 65, 80, 100, 120, 145, 160, 180, 250]
-COR_AZUL = CellFormat(backgroundColor=Color(0, 0.2, 0.9))  # #0034e6
+# Marcos e cores
+MARCOS                = [15, 20, 35, 45, 55, 65, 80, 100, 120, 145, 160, 180, 250]
+MARCOS_EXIBIR_NOME    = [15, 20, 35, 45, 65, 80, 100, 145, 160, 180, 250]
+COR_AZUL              = CellFormat(backgroundColor=Color(0, 0.2, 0.9))   # #0034e6
+COR_PRETA             = CellFormat(backgroundColor=Color(0, 0, 0))      # #000000
 
 async def atualizar_inatividade_periodicamente():
     while True:
@@ -41,11 +43,9 @@ async def atualizar_inatividade_periodicamente():
                     try:
                         penultima_data = datetime.strptime(row[4], '%d/%m/%Y').date()
                         dias_inativos = max(0, (now - penultima_data).days - 1)
-
                         await asyncio.to_thread(sheet.update_cell, i, 6, str(dias_inativos))  # Coluna F
                     except Exception as e:
                         print(f'[ERRO] Linha {i}: {e}')
-
         except Exception as e:
             print(f'[ERRO GERAL - ATUALIZAÇÃO INATIVIDADE]: {e}')
 
@@ -119,8 +119,18 @@ async def on_message(message):
                 total += 1
                 await asyncio.to_thread(sheet.update_cell, linha_found, 4, str(total))  # Coluna D
 
+                # Aplica azul na Coluna D se for marco
                 if total in MARCOS:
                     await asyncio.to_thread(format_cell_range, sheet, f'D{linha_found}', COR_AZUL)
+
+                # Gerencia exibição de nick na coluna J
+                if total in MARCOS_EXIBIR_NOME:
+                    await asyncio.to_thread(sheet.update_cell, linha_found, 10, discord_nick)  # Coluna J
+                    await asyncio.to_thread(format_cell_range, sheet, f'J{linha_found}', COR_AZUL)
+                elif total - 2 in MARCOS_EXIBIR_NOME:
+                    await asyncio.to_thread(sheet.update_cell, linha_found, 10, '')  # Limpa coluna J
+                    await asyncio.to_thread(format_cell_range, sheet, f'J{linha_found}', COR_PRETA)
+                    await asyncio.to_thread(format_cell_range, sheet, f'D{linha_found}', COR_PRETA)
 
                 await message.reply('✅ Presença registrada com sucesso!')
             else:
