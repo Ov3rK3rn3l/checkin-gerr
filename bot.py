@@ -24,6 +24,7 @@ sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
 # --- Configuração do bot Discord ---
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True  # Necessário para on_member_remove
 client = discord.Client(intents=intents)
 
 # Marcos de promoção
@@ -64,7 +65,6 @@ CORES_PATENTES = {
 
 COR_PRETA = CellFormat(backgroundColor=Color(0, 0, 0))
 
-# Determina a patente com base na presença
 def patente_por_presenca(presencas):
     niveis = sorted(PATENTES.keys())
     for i in reversed(niveis):
@@ -172,11 +172,62 @@ async def on_message(message):
         else:
             nova_linha = [discord_nick, discord_id, data_hoje, '1', '', '0']
             await asyncio.to_thread(sheet.append_row, nova_linha)
-            linha_idx = len(registros) + 1
             await message.reply('✅ Presença registrada com sucesso!')
 
     except Exception as e:
         await message.reply(f'❌ Erro ao registrar presença: {e}')
 
-if __name__ == '__main__':
-    client.run(DISCORD_TOKEN)
+@client.event
+async def on_member_remove(member):
+    try:
+        discord_id = str(member.id)
+        guild = member.guild
+        now = datetime.now(pytz.timezone(TIMEZONE))
+
+        motivo = "Saiu do servidor"
+
+        # Verifica kick recente
+        async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.kick):
+            if entry.target.id == member.id and (now - entry.created_at.replace(tzinfo=pytz.UTC)).total_seconds() < 60:
+                motivo = f"Expulso por {entry.user} - Motivo: {entry.reason or 'Não informado'}"
+                break
+
+        # Se não foi kick, verifica ban
+        if motivo == "Saiu do servidor":
+            async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.ban):
+                if entry.target.id == member.id and (now - entry.created_at.replace(tzinfo=pytz.UTC)).total_seconds() < 60:
+                    motivo = f"Banido por {entry.user} - Motivo: {entry.reason or 'Não informado'}"
+                    break
+
+        registros = await asyncio.to_thread(sheet.get_all_values)
+        linha_found = None
+        for i, row in enumerate(registros, start=1):
+            if len(row) >= 2 and row[1] == discord_id:
+                linha_found = i
+                break
+
+        if not linha_found:
+            print(f'Membro {member.name} ({discord_id}) não encontrado na planilha principal.')
+            return
+
+        linha = registros[linha_found - 1]
+        codinome = linha[0] if len(linha) >= 1 else ''
+        discord_tag = str(member)
+        patente = linha[10] if len(linha) >= 11 else ''
+        data_exoneracao = now.strftime('%d/%m/%Y')
+
+        aba_exonerados = gc.open_by_key(SPREADSHEET_ID).worksheet("Exonerados")
+
+        # Inserir linha no topo (linha 2), empurrando as demais para baixo
+        nova_linha = [codinome, discord_tag, patente, data_exoneracao, motivo, '', discord_id]
+        await asyncio.to_thread(aba_exonerados.insert_row, nova_linha, 3)
+
+        # Remove da planilha principal
+        await asyncio.to_thread(sheet.delete_rows, linha_found)
+
+        print(f'{codinome} ({discord_tag}) movido para "Exonerados" com motivo: {motivo}')
+
+    except Exception as e:
+        print(f'Erro ao mover exonerado: {e}')
+
+client.run(DISCORD_TOKEN)
