@@ -220,7 +220,7 @@ async def on_member_remove(member):
 
         # Inserir linha no topo (linha 2), empurrando as demais para baixo
         nova_linha = [codinome, discord_tag, patente, data_exoneracao, motivo, '', discord_id]
-        await asyncio.to_thread(aba_exonerados.insert_row, nova_linha, 2)
+        await asyncio.to_thread(aba_exonerados.insert_row, nova_linha, 3)
 
         # Remove da planilha principal
         await asyncio.to_thread(sheet.delete_rows, linha_found)
